@@ -25,8 +25,6 @@ data Def a
   | HdCstr !(HornCstr a)
   deriving (Generic, Show, Functor)
 
-exprP
-
 qualP :: F.Parser (HornWf Int)
 qualP = error "fixme_hornWfP"
 

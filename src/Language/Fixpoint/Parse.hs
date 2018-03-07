@@ -471,11 +471,11 @@ insertOperator i op ops = go (9 - i) ops
     go 0 (xs:xss) = (xs++[op]):xss
     go i (xs:xss) = xs:go (i-1) xss
 
-initPState :: PState
-initPState = mkInitPState builtinOps -- { fixityTable = bops }
+-- initPState :: PState
+-- initPState = mkInitPState builtinOps -- { fixityTable = bops }
 
-mkInitPState :: [Fixity] -> PState
-mkInitPState ops = PState { fixityTable = mkOpTable ops }
+-- mkInitPState :: [Fixity] -> PState
+-- mkInitPState ops = PState { fixityTable = mkOpTable ops }
 
 mkOpTable :: [Fixity] -> OpTable
 mkOpTable = L.foldl' (flip addOperator) initOpTable
@@ -955,7 +955,10 @@ parseWithState st parser f s
                     , nest 4 (text r)
                     , "when parsing from" <+> text f ]
 initPState :: PState
-initPState = PState {fixityTable = bops, empList = Nothing, singList = Nothing}
+initPState = PState { fixityTable = mkOpTable builtinOps
+                    , empList     = Nothing
+                    , singList    = Nothing
+                    }
 
 {-
 doParse' :: Parser a -> SourceName -> String -> a
