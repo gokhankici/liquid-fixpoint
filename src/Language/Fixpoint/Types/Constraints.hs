@@ -475,9 +475,9 @@ instance Fixpoint QualParam where
 
 instance Fixpoint QualPattern where 
   toFix PatNone         = "" 
-  toFix (PatPrefix s i) = "as" <+> toFix s <+> ("$" <> int i)
-  toFix (PatSuffix i s) = "as" <+> ("$" <> int i) <+> toFix s 
-  toFix (PatExact  s  ) = "~"  <+> toFix s 
+  toFix (PatPrefix s i) = "as" <+> parens ( toFix s <+> char '.' <+> ("$" <> int i) )
+  toFix (PatSuffix i s) = "as" <+> parens ( ("$" <> int i) <+> char '.' <+> toFix s )
+  toFix (PatExact  s  ) = "as" <+> toFix s 
 
 instance PPrint QualParam where 
   pprintTidy k (QP x pat t) = pprintTidy k x <+> pprintTidy k pat <+> colon <+> pprintTidy k t 
