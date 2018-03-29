@@ -471,7 +471,13 @@ instance Loc Qualifier where
       l     = qPos q
 
 instance Fixpoint QualParam where 
-  toFix (QP x _ t) = toFix (x, t) 
+  toFix (QP x pat t) = toFix x <+> toFix pat <+> colon <+> toFix t 
+
+instance Fixpoint QualPattern where 
+  toFix PatNone         = "" 
+  toFix (PatPrefix s i) = "as" <+> toFix s <+> ("$" <> int i)
+  toFix (PatSuffix i s) = "as" <+> ("$" <> int i) <+> toFix s 
+  toFix (PatExact  s  ) = "~"  <+> toFix s 
 
 instance PPrint QualParam where 
   pprintTidy k (QP x pat t) = pprintTidy k x <+> pprintTidy k pat <+> colon <+> pprintTidy k t 
@@ -479,7 +485,7 @@ instance PPrint QualParam where
 instance PPrint QualPattern where 
   pprintTidy _ PatNone         = "" 
   pprintTidy k (PatPrefix s i) = "as" <+> pprintTidy k s <+> ("$" <> pprint i)
-  pprintTidy k (PatSuffix s i) = "as" <+> ("$" <> pprint i) <+> pprintTidy k s 
+  pprintTidy k (PatSuffix i s) = "as" <+> ("$" <> pprint i) <+> pprintTidy k s 
   pprintTidy k (PatExact  s  ) = "~"  <+> pprintTidy k s 
 
 instance Fixpoint Qualifier where
