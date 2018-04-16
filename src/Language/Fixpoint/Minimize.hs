@@ -69,6 +69,18 @@ commonDebug init updateFi checkRes min cfg solve fi ext formatter = do
   putStrLn $ formatter fi cs
   return mempty
 
+commonDebug2 init updateFi checkRes min cfg solve fi ext formatter = do
+  let cs0 = init fi
+  let oracle = mkOracle updateFi checkRes
+  cs <- deltaDebug min oracle cfg solve fi cs0 []
+  let minFi = updateFi fi cs
+  saveQuery (addExt ext cfg) minFi
+  putStrLn $ formatter fi cs
+  return Result { resStatus    = Unsafe ((\(c1,c2) -> (c1, sinfo c2)) <$> cs)
+                , resSolution  = mempty
+                , gresSolution = mempty
+                }
+
 ---------------------------------------------------------------------------
 minQuery :: (NFData a, Fixpoint a) => Config -> Solver a -> FInfo a
          -> IO (Result (Integer, a))
@@ -80,7 +92,7 @@ minQuery cfg solve fi = do
   let failFi = safeHead "--minimize can only be called on UNSAT fq" failFis
   let format _ cs = "Minimized Constraints: " ++ show (fst <$> cs)
   let update fi cs = fi { cm = M.fromList cs }
-  commonDebug (M.toList . cm) update (not . isSafe) True cfg' solve failFi Min format
+  commonDebug2 (M.toList . cm) update (not . isSafe) True cfg' solve failFi Min format
 
 ---------------------------------------------------------------------------
 minQuals :: (NFData a, Fixpoint a) => Config -> Solver a -> FInfo a
