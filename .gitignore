@@ -7,6 +7,7 @@
 .liquid
 /.vagrant/
 /.stack-work/
+/.stack-work-profile/
 /build.sh
 /external/fixpoint/config.make
 /external/fixpoint/fixpoint.native
