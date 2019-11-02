@@ -44,7 +44,7 @@ import           Data.List (sortBy)
 
 -- import qualified Language.Fixpoint.Solver.Solution    as So
 -- import Data.Graph.Inductive
-
+import qualified Data.Semigroup as Sg
 
 
 --------------------------------------------------------------------------------
@@ -55,11 +55,13 @@ data CPart c a = CPart { pws :: !(M.HashMap F.KVar (F.WfC a))
                        , pcm :: !(M.HashMap Integer (c a))
                        }
   
+instance Sg.Semigroup (CPart c a) where
+   (<>) l r = CPart { pws = pws l Sg.<> pws r
+                    , pcm = pcm l Sg.<> pcm r
+                    }
+
 instance Monoid (CPart c a) where
    mempty      = CPart mempty mempty
-   mappend l r = CPart { pws = pws l `mappend` pws r
-                       , pcm = pcm l `mappend` pcm r
-                       }
 
 --------------------------------------------------------------------------------
 -- | Multicore info ------------------------------------------------------------

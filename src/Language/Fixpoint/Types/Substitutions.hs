@@ -21,10 +21,13 @@ import           Language.Fixpoint.Types.Refinements
 import           Language.Fixpoint.Misc
 import           Text.PrettyPrint.HughesPJ
 import           Text.Printf               (printf)
+import qualified Data.Semigroup as Sg
+
+instance Sg.Semigroup Subst where
+  (<>) = catSubst
 
 instance Monoid Subst where
   mempty  = emptySubst
-  mappend = catSubst
 
 filterSubst :: (Symbol -> Expr -> Bool) -> Subst -> Subst
 filterSubst f (Su m) = Su (M.filterWithKey f m)
@@ -159,14 +162,18 @@ disjoint (Su su) bs = S.null $ suSyms `S.intersection` bsSyms
     suSyms = S.fromList $ syms (M.elems su) ++ syms (M.keys su)
     bsSyms = S.fromList $ syms $ fst <$> bs
 
+instance Sg.Semigroup Expr where
+  (<>) p q = pAnd [p, q]
+
 instance Monoid Expr where
   mempty      = PTrue
-  mappend p q = pAnd [p, q]
   mconcat     = pAnd
+
+instance Sg.Semigroup Reft where
+  (<>) = meetReft
 
 instance Monoid Reft where
   mempty  = trueReft
-  mappend = meetReft
 
 meetReft :: Reft -> Reft -> Reft
 meetReft (Reft (v, ra)) (Reft (v', ra'))
@@ -174,9 +181,11 @@ meetReft (Reft (v, ra)) (Reft (v', ra'))
   | v == dummySymbol = Reft (v', ra' `mappend` (ra `subst1`  (v , EVar v')))
   | otherwise        = Reft (v , ra  `mappend` (ra' `subst1` (v', EVar v )))
 
+instance Sg.Semigroup SortedReft where
+  (<>) t1 t2 = RR (mappend (sr_sort t1) (sr_sort t2)) (mappend (sr_reft t1) (sr_reft t2))
+
 instance Monoid SortedReft where
   mempty        = RR mempty mempty
-  mappend t1 t2 = RR (mappend (sr_sort t1) (sr_sort t2)) (mappend (sr_reft t1) (sr_reft t2))
 
 instance Subable Reft where
   syms (Reft (v, ras))      = v : syms ras

@@ -31,7 +31,7 @@ import qualified Language.Fixpoint.Types.Solutions    as Sol
 import           Language.Fixpoint.Types.Constraints  hiding (ws, bs)
 import           Prelude                              hiding (init, lookup)
 import           Language.Fixpoint.Solver.Sanitize
-
+import qualified Data.Semigroup as Sg
 -- DEBUG
 -- import Text.Printf (printf)
 -- import           Debug.Trace (trace)
@@ -367,13 +367,15 @@ data KInfo = KI { kiTags  :: [Tag]
                 , kiCubes :: !Integer
                 } deriving (Eq, Ord, Show)
 
-instance Monoid KInfo where
-  mempty         = KI [] 0 1
-  mappend ki ki' = KI ts d s
+instance Sg.Semigroup KInfo where
+  (<>) ki ki' = KI ts d s
     where
       ts         = appendTags (kiTags  ki) (kiTags  ki')
       d          = max        (kiDepth ki) (kiDepth ki')
       s          = (*)        (kiCubes ki) (kiCubes ki')
+
+instance Monoid KInfo where
+  mempty         = KI [] 0 1
 
 mplus :: KInfo -> KInfo -> KInfo
 mplus ki ki' = (mappend ki ki') { kiCubes = kiCubes ki + kiCubes ki'}

@@ -63,6 +63,8 @@ import           Language.Fixpoint.Misc
 import           Text.PrettyPrint.HughesPJ
 -- import           Text.Printf
 import           Data.Function (on)
+import Prelude hiding ((<>))
+import qualified Data.Semigroup as Sg
 
 -- import           Debug.Trace
 
@@ -172,13 +174,15 @@ instance Eq a => Eq (FixResult a) where
   Safe      == Safe               = True
   _         == _                  = False
 
+instance Sg.Semigroup (FixResult a) where
+  (<>) Safe x                  = x
+  (<>) x Safe                  = x
+  (<>) _ c@(Crash _ _)         = c
+  (<>) c@(Crash _ _) _         = c
+  (<>) (Unsafe xs) (Unsafe ys) = Unsafe (xs ++ ys)
+
 instance Monoid (FixResult a) where
   mempty                          = Safe
-  mappend Safe x                  = x
-  mappend x Safe                  = x
-  mappend _ c@(Crash _ _)         = c
-  mappend c@(Crash _ _) _         = c
-  mappend (Unsafe xs) (Unsafe ys) = Unsafe (xs ++ ys)
 
 instance Functor FixResult where
   fmap f (Crash xs msg)   = Crash (f <$> xs) msg

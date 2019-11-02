@@ -107,6 +107,9 @@ import           Text.PrettyPrint.HughesPJ
 import qualified Data.HashMap.Strict       as M
 import qualified Data.HashSet              as S
 
+import Prelude hiding ((<>))
+import qualified Data.Semigroup as Sg
+
 --------------------------------------------------------------------------------
 -- | Constraints ---------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -249,7 +252,7 @@ type GFixSolution = GFixSol Expr
 
 type FixSolution  = M.HashMap KVar Expr
 newtype GFixSol e = GSol (M.HashMap KVar (e, [e]))
-  deriving (Generic, Monoid, Functor)
+  deriving (Generic, Semigroup, Monoid, Functor)
 
 toGFixSol :: M.HashMap KVar (e, [e]) -> GFixSol e
 toGFixSol = GSol
@@ -260,13 +263,15 @@ data Result a = Result { resStatus    :: !(FixResult a)
                        , gresSolution :: !GFixSolution }
                 deriving (Generic, Show)
 
+instance Sg.Semigroup (Result a) where
+  (<>) r1 r2 = Result stat soln gsoln
+    where
+      stat      = (Sg.<>) (resStatus r1)    (resStatus r2)
+      soln      = (Sg.<>) (resSolution r1)  (resSolution r2)
+      gsoln     = (Sg.<>) (gresSolution r1) (gresSolution r2)
+
 instance Monoid (Result a) where
   mempty        = Result mempty mempty mempty
-  mappend r1 r2 = Result stat soln gsoln
-    where
-      stat      = mappend (resStatus r1)    (resStatus r2)
-      soln      = mappend (resSolution r1)  (resSolution r2)
-      gsoln     = mappend (gresSolution r1) (gresSolution r2)
 
 unsafe, safe :: Result a
 unsafe = mempty {resStatus = Unsafe []}
@@ -585,9 +590,11 @@ instance Fixpoint Kuts where
 ksMember :: KVar -> Kuts -> Bool
 ksMember k (KS s) = S.member k s
 
+instance Sg.Semigroup Kuts where
+  (<>) k1 k2 = KS $ S.union (ksVars k1) (ksVars k2)
+
 instance Monoid Kuts where
   mempty        = KS S.empty
-  mappend k1 k2 = KS $ S.union (ksVars k1) (ksVars k2)
 
 ------------------------------------------------------------------------
 -- | Constructing Queries
@@ -661,27 +668,31 @@ data GInfo c a =
 instance HasGradual (GInfo c a) where
   isGradual info = any isGradual (M.elems $ ws info)
 
+instance Sg.Semigroup HOInfo where
+  (<>) i1 i2 = HOI { hoBinds = hoBinds i1 || hoBinds i2
+                   , hoQuals = hoQuals i1 || hoQuals i2
+                   }
+
 instance Monoid HOInfo where
   mempty        = HOI False False
-  mappend i1 i2 = HOI { hoBinds = hoBinds i1 || hoBinds i2
-                      , hoQuals = hoQuals i1 || hoQuals i2
-                      }
+
+instance Sg.Semigroup (GInfo c a) where
+  (<>) i1 i2 = FI { cm       = (Sg.<>) (cm i1)       (cm i2)
+                  , ws       = (Sg.<>) (ws i1)       (ws i2)
+                  , bs       = (Sg.<>) (bs i1)       (bs i2)
+                  , gLits    = (Sg.<>) (gLits i1)    (gLits i2)
+                  , dLits    = (Sg.<>) (dLits i1)    (dLits i2)
+                  , kuts     = (Sg.<>) (kuts i1)     (kuts i2)
+                  , quals    = (Sg.<>) (quals i1)    (quals i2)
+                  , bindInfo = (Sg.<>) (bindInfo i1) (bindInfo i2)
+                  , ddecls   = (Sg.<>) (ddecls i1)   (ddecls i2)
+                  , hoInfo   = (Sg.<>) (hoInfo i1)   (hoInfo i2)
+                  , asserts  = (Sg.<>) (asserts i1)  (asserts i2)
+                  , ae       = (Sg.<>) (ae i1)       (ae i2)
+                  }
 
 instance Monoid (GInfo c a) where
   mempty        = FI M.empty mempty mempty mempty mempty mempty mempty mempty mempty mempty mempty mempty
-  mappend i1 i2 = FI { cm       = mappend (cm i1)       (cm i2)
-                     , ws       = mappend (ws i1)       (ws i2)
-                     , bs       = mappend (bs i1)       (bs i2)
-                     , gLits    = mappend (gLits i1)    (gLits i2)
-                     , dLits    = mappend (dLits i1)    (dLits i2)
-                     , kuts     = mappend (kuts i1)     (kuts i2)
-                     , quals    = mappend (quals i1)    (quals i2)
-                     , bindInfo = mappend (bindInfo i1) (bindInfo i2)
-                     , ddecls   = mappend (ddecls i1)   (ddecls i2)
-                     , hoInfo   = mappend (hoInfo i1)   (hoInfo i2)
-                     , asserts  = mappend (asserts i1)  (asserts i2)
-                     , ae       = mappend (ae i1)       (ae i2)
-                     }
 
 instance PTable (SInfo a) where
   ptable z = DocTable [ (text "# Sub Constraints", pprint $ length $ cm z)
@@ -815,13 +826,15 @@ instance NFData Equation
 instance NFData SMTSolver
 instance NFData Eliminate
 
+instance Sg.Semigroup AxiomEnv where
+  (<>) a1 a2    = AEnv aenvEqs' aenvSimpl' aenvExpand'
+    where
+      aenvEqs'     = (Sg.<>) (aenvEqs a1) (aenvEqs a2)
+      aenvSimpl'   = (Sg.<>) (aenvSimpl a1) (aenvSimpl a2)
+      aenvExpand'  = (Sg.<>) (aenvExpand a1) (aenvExpand a2)
+
 instance Monoid AxiomEnv where
   mempty           = AEnv [] [] (M.fromList [])
-  mappend a1 a2    = AEnv aenvEqs' aenvSimpl' aenvExpand'
-    where
-      aenvEqs'     = mappend (aenvEqs a1) (aenvEqs a2)
-      aenvSimpl'   = mappend (aenvSimpl a1) (aenvSimpl a2)
-      aenvExpand'  = mappend (aenvExpand a1) (aenvExpand a2)
 
 instance PPrint AxiomEnv where
   pprintTidy _ = text . show

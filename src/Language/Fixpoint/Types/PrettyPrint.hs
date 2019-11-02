@@ -15,6 +15,8 @@ import           Language.Fixpoint.Misc
 import           Data.Hashable
 import qualified Data.Text as T
 
+import Prelude hiding ((<>))
+import qualified Data.Semigroup as Sg
 
 traceFix     ::  (Fixpoint a) => String -> a -> a
 traceFix s x = trace ("\nTrace: [" ++ s ++ "] : " ++ showFix x) x
@@ -164,9 +166,11 @@ instance PPrint T.Text where
 
 newtype DocTable = DocTable [(Doc, Doc)]
 
+instance Sg.Semigroup DocTable where
+  DocTable t1 <> DocTable t2 = DocTable (t1 ++ t2)
+  
 instance Monoid DocTable where
   mempty                              = DocTable []
-  mappend (DocTable t1) (DocTable t2) = DocTable (t1 ++ t2)
 
 class PTable a where
   ptable :: a -> DocTable

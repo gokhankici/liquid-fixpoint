@@ -69,6 +69,7 @@ import qualified Language.Fixpoint.Smt.Theories   as Thy
 -- import qualified Language.Fixpoint.Smt.Types      as Thy
 import           Text.PrettyPrint.HughesPJ
 import           Text.Printf
+import qualified Data.Semigroup as Sg
 
 -- import Debug.Trace
 
@@ -1042,9 +1043,11 @@ checkFunSort t             = throwError $ errNonFunction 1 t
 
 newtype TVSubst = Th (M.HashMap Int Sort) deriving (Show)
 
+instance Sg.Semigroup TVSubst where
+  (<>) (Th s1) (Th s2) = Th (s1 Sg.<> s2)
+
 instance Monoid TVSubst where
   mempty                  = Th mempty
-  mappend (Th s1) (Th s2) = Th (mappend s1 s2)
 
 lookupVar :: Int -> TVSubst -> Maybe Sort
 lookupVar i (Th m)   = M.lookup i m

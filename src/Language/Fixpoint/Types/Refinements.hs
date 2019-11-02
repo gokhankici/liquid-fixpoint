@@ -119,6 +119,8 @@ import           Text.PrettyPrint.HughesPJ
 import qualified Data.HashMap.Strict       as M
 -- import qualified Data.HashSet              as S
 
+import Prelude hiding ((<>))
+
 instance NFData KVar
 instance NFData SrcSpan
 instance NFData Subst

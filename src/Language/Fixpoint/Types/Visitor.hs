@@ -57,7 +57,7 @@ import qualified Data.List           as L
 import           Language.Fixpoint.Types hiding (mapSort)
 import qualified Language.Fixpoint.Misc as Misc
 
-
+import qualified Data.Semigroup as Sg
 
 
 data Visitor acc ctx = Visitor {
@@ -248,9 +248,11 @@ mapKVarSubsts f          = trans kvVis () ()
 
 newtype MInt = MInt Integer -- deriving (Eq, NFData)
 
+instance Sg.Semigroup MInt where
+  (<>) (MInt m) (MInt n) = MInt (m + n)
+
 instance Monoid MInt where
   mempty                    = MInt 0
-  mappend (MInt m) (MInt n) = MInt (m + n)
 
 size :: Visitable t => t -> Integer
 size t    = n

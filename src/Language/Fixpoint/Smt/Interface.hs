@@ -79,7 +79,7 @@ import           Control.Monad
 import           Control.Exception
 import           Data.Char
 import qualified Data.HashMap.Strict      as M
-import           Data.Monoid
+-- import           Data.Monoid
 import           Data.Maybe                  (fromMaybe)
 import qualified Data.Text                as T
 import           Data.Text.Format

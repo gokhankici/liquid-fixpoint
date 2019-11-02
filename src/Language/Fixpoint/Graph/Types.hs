@@ -60,6 +60,7 @@ import qualified Language.Fixpoint.Types.Solutions as F
 import qualified Language.Fixpoint.Types   as F
 import qualified Data.HashMap.Strict       as M
 import qualified Data.HashSet              as S
+import Prelude hiding ((<>))
 
 import GHC.Stack
 --------------------------------------------------------------------------------

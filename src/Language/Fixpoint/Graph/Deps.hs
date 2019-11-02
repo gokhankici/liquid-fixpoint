@@ -48,6 +48,7 @@ import           Data.Function (on)
 import           Data.Hashable
 import           Text.PrettyPrint.HughesPJ
 import           Debug.Trace (trace)
+import qualified Data.Semigroup as Sg
 
 --------------------------------------------------------------------------------
 -- | Compute constraints that transitively affect target constraints,
@@ -265,9 +266,11 @@ instance PPrint (Elims a) where
     where
       ppSize     = pprint . S.size
 
+instance (Eq a, Hashable a) => Sg.Semigroup (Elims a) where
+  (<>) (Deps d1 n1) (Deps d2 n2) = Deps (S.union d1 d2) (S.union n1 n2)
+
 instance (Eq a, Hashable a) => Monoid (Elims a) where
   mempty                            = Deps S.empty S.empty
-  mappend (Deps d1 n1) (Deps d2 n2) = Deps (S.union d1 d2) (S.union n1 n2)
 
 dCut, dNonCut :: (Hashable a) => a -> Elims a
 dNonCut v = Deps S.empty (S.singleton v)

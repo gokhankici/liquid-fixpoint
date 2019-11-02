@@ -85,6 +85,7 @@ import           Language.Fixpoint.Types.Constraints
 import           Language.Fixpoint.Types.Substitutions
 import           Language.Fixpoint.SortCheck (elaborate)
 import           Text.PrettyPrint.HughesPJ
+import qualified Data.Semigroup as Sg
 
 --------------------------------------------------------------------------------
 -- | Update Solution -----------------------------------------------------------
@@ -185,6 +186,14 @@ updateGMap sol gmap = sol {gMap = gmap}
 mapGMap :: Sol b a -> (b -> b) -> Sol b a
 mapGMap sol f = sol {gMap = M.map f (gMap sol)}
 
+instance Sg.Semigroup (Sol a b) where
+  (<>) s1 s2 = Sol { sEnv  = (Sg.<>) (sEnv s1) (sEnv s2)
+                   , sMap  = (Sg.<>) (sMap s1) (sMap s2)
+                   , gMap  = (Sg.<>) (gMap s1) (gMap s2)
+                   , sHyp  = (Sg.<>) (sHyp s1) (sHyp s2)
+    --             , sBot  = (Sg.<>) (sBot s1) (sBot s2)
+                   , sScp  = (Sg.<>) (sScp s1) (sScp s2)
+                   }
 
 instance Monoid (Sol a b) where
   mempty        = Sol mempty mempty mempty mempty mempty

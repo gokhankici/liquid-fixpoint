@@ -79,6 +79,8 @@ import           Language.Fixpoint.Misc
 import           Text.PrettyPrint.HughesPJ
 import qualified Data.HashMap.Strict       as M
 
+import Prelude hiding ((<>))
+import qualified Data.Semigroup as Sg
 
 data FTycon   = TC LocSymbol TCInfo deriving (Ord, Show, Data, Typeable, Generic)
 type TCEmb a  = M.HashMap a Sort -- FTycon
@@ -98,9 +100,11 @@ data TCInfo = TCInfo { tc_isNum :: Bool, tc_isReal :: Bool, tc_isString :: Bool 
 mappendFTC :: FTycon -> FTycon -> FTycon
 mappendFTC (TC x i1) (TC _ i2) = TC x (mappend i1 i2)
 
+instance Sg.Semigroup TCInfo where
+  (TCInfo i1 i2 i3) <> (TCInfo i1' i2' i3') = TCInfo (i1 || i1') (i2 || i2') (i3 || i3')
+
 instance Monoid TCInfo where
   mempty                                          = TCInfo defNumInfo defRealInfo defStrInfo
-  mappend (TCInfo i1 i2 i3)  (TCInfo i1' i2' i3') = TCInfo (i1 || i1') (i2 || i2') (i3 || i3')
 
 defTcInfo, numTcInfo, realTcInfo, strTcInfo :: TCInfo
 defTcInfo  = TCInfo defNumInfo defRealInfo defStrInfo
@@ -450,11 +454,12 @@ instance NFData DataCtor
 instance NFData DataDecl
 instance NFData Sub
 
-
-instance Monoid Sort where
-  mempty            = FObj "any"
-  mappend t1 t2
+instance Sg.Semigroup Sort where
+  t1 <> t2
     | t1 == mempty  = t2
     | t2 == mempty  = t1
     | t1 == t2      = t1
     | otherwise     = errorstar $ "mappend-sort: conflicting sorts t1 =" ++ show t1 ++ " t2 = " ++ show t2
+
+instance Monoid Sort where
+  mempty            = FObj "any"

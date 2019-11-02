@@ -53,6 +53,9 @@ import qualified Data.Binary              as B
 import qualified Data.HashMap.Strict      as M
 import qualified Language.Fixpoint.Misc   as Misc -- (sortNub, errorstar) -- traceShow)
 
+import qualified Data.Semigroup as Sg
+import Prelude hiding ((<>))
+
 --------------------------------------------------------------------------------
 -- | 'Raw' is the low-level representation for SMT values
 --------------------------------------------------------------------------------
@@ -77,14 +80,16 @@ type FuncSort = (SmtSort, SmtSort)
 instance NFData   SymEnv
 instance B.Binary SymEnv
 
+instance Sg.Semigroup SymEnv where
+  (<>) e1 e2 = SymEnv { seSort   = seSort   e1 `mappend` seSort   e2
+                      , seTheory = seTheory e1 `mappend` seTheory e2
+                      , seData   = seData   e1 `mappend` seData   e2
+                      , seLits   = seLits   e1 `mappend` seLits   e2
+                      , seAppls  = seAppls  e1 `mappend` seAppls  e2
+                      }
+
 instance Monoid SymEnv where
   mempty        = SymEnv emptySEnv emptySEnv emptySEnv emptySEnv mempty
-  mappend e1 e2 = SymEnv { seSort   = seSort   e1 `mappend` seSort   e2
-                         , seTheory = seTheory e1 `mappend` seTheory e2
-                         , seData   = seData   e1 `mappend` seData   e2
-                         , seLits   = seLits   e1 `mappend` seLits   e2
-                         , seAppls  = seAppls  e1 `mappend` seAppls  e2
-                         }
 
 symEnv :: SEnv Sort -> SEnv TheorySymbol -> [DataDecl] -> SEnv Sort -> [Sort] -> SymEnv
 symEnv xEnv fEnv ds ls ts = SymEnv xEnv' fEnv dEnv ls sortMap

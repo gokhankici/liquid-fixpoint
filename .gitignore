@@ -29,3 +29,4 @@
 /tests/pos/.liquid/
 /external/ocamlgraph/config.log
 /TAGS
+/stack.yaml.lock
