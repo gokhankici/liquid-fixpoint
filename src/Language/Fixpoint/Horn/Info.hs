@@ -140,7 +140,8 @@ kvEnvWfCs :: KVEnv a -> M.HashMap F.KVar (F.WfC a)
 kvEnvWfCs kve = M.fromList [ (F.KV k, kvWfC info) | (k, info) <- M.toList kve ]
 
 hvarArg :: H.Var a -> Int -> F.Symbol
-hvarArg k i = F.intSymbol (F.suffixSymbol hvarPrefix (H.hvName k)) i
+-- hvarArg k i = F.intSymbol (F.suffixSymbol hvarPrefix (H.hvName k)) i
+hvarArg k i = F.suffixSymbol hvarPrefix (H.hvName k) `F.intSymbol` i `F.intSymbol` i
 
 hvarPrefix :: F.Symbol
 hvarPrefix = F.symbol "nnf_arg"
