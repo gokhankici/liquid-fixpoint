@@ -119,7 +119,7 @@ kvInfo be k       = (be', KVInfo k (fst <$> xts) wfc)
     (be', ids)    = L.mapAccumL insertBE be xts'
     ((x,t), xts') = Misc.safeUncons "Horn var with no args" xts
     -- make the parameters
-    xts           = [ (hvarArg k i, t) | (t, i) <- zip (H.hvArgs k) [0..] ]
+    xts           = [ (p, t) | (p, t) <- H.hvArgs k ]
 
 insertBE :: F.BindEnv -> (F.Symbol, F.Sort) -> (F.BindEnv, F.BindId)
 insertBE be (x, t) = Tuple.swap $ F.insertBindEnv x (F.trueSortedReft t) be
@@ -139,9 +139,8 @@ data KVInfo a = KVInfo
 kvEnvWfCs :: KVEnv a -> M.HashMap F.KVar (F.WfC a)
 kvEnvWfCs kve = M.fromList [ (F.KV k, kvWfC info) | (k, info) <- M.toList kve ]
 
-hvarArg :: H.Var a -> Int -> F.Symbol
+-- hvarArg :: F.Symbol -> Int -> F.Symbol
 -- hvarArg k i = F.intSymbol (F.suffixSymbol hvarPrefix (H.hvName k)) i
-hvarArg k i = F.suffixSymbol hvarPrefix (H.hvName k) `F.intSymbol` i `F.intSymbol` i
 
-hvarPrefix :: F.Symbol
-hvarPrefix = F.symbol "nnf_arg"
+-- hvarPrefix :: F.Symbol
+-- hvarPrefix = F.symbol "nnf_arg"

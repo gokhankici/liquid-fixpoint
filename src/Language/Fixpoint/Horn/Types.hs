@@ -45,7 +45,7 @@ import qualified Data.HashMap.Strict as M
 -------------------------------------------------------------------------------
 data Var a = HVar
   { hvName :: !F.Symbol                         -- ^ name of the variable $k1, $k2 etc.
-  , hvArgs :: ![F.Sort] {- len hvArgs > 0 -}    -- ^ sorts of its parameters i.e. of the relation defined by the @HVar@
+  , hvArgs :: ![(F.Symbol, F.Sort)] {- len hvArgs > 0 -}    -- ^ sorts of its parameters i.e. of the relation defined by the @HVar@
   , hvMeta :: a                                 -- ^ meta-data
   }
   deriving (Eq, Ord, Data, Typeable, Generic, Functor)
