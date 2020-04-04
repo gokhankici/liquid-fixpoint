@@ -18,6 +18,7 @@ import           Language.Fixpoint.Utils.Files      hiding (Result)
 import           Language.Fixpoint.Graph
 import           Language.Fixpoint.Types
 import           Control.DeepSeq
+import           Data.Bifunctor
 
 ---------------------------------------------------------------------------
 -- polymorphic delta debugging implementation
@@ -69,6 +70,28 @@ commonDebug init updateFi checkRes min cfg solve fi ext formatter = do
   putStrLn $ formatter fi cs
   return mempty
 
+
+commonDebug2 :: (NFData a, Fixpoint a)
+             => (FInfo a -> [(SubcId, SubC a)])
+             -> (FInfo a -> [(SubcId, SubC a)] -> FInfo a)
+             -> (Result (Integer, a) -> Bool)
+             -> Bool
+             -> Config
+             -> Solver a
+             -> FInfo a
+             -> Ext
+             -> (FInfo a -> [(SubcId, SubC a)] -> String)
+             -> IO (Result (Integer, a))
+commonDebug2 init updateFi checkRes min cfg solve fi ext formatter = do
+  let cs0 = init fi
+  let oracle = mkOracle updateFi checkRes
+  cs <- deltaDebug min oracle cfg solve fi cs0 []
+  let minFi = updateFi fi cs
+  saveQuery (addExt ext cfg) minFi
+  putStrLn $ formatter fi cs
+  let toStatus = second sinfo
+  return mempty { resStatus = Unsafe $ toStatus <$> cs }
+
 ---------------------------------------------------------------------------
 minQuery :: (NFData a, Fixpoint a) => Config -> Solver a -> FInfo a
          -> IO (Result (Integer, a))
@@ -80,7 +103,7 @@ minQuery cfg solve fi = do
   let failFi = safeHead "--minimize can only be called on UNSAT fq" failFis
   let format _ cs = "Minimized Constraints: " ++ show (fst <$> cs)
   let update fi cs = fi { cm = M.fromList cs }
-  commonDebug (M.toList . cm) update (not . isSafe) True cfg' solve failFi Min format
+  commonDebug2 (M.toList . cm) update (not . isSafe) True cfg' solve failFi Min format
 
 ---------------------------------------------------------------------------
 minQuals :: (NFData a, Fixpoint a) => Config -> Solver a -> FInfo a
