@@ -43,6 +43,7 @@ solve cfg fi = do
     (res, stat) <- (if (Quiet == vb || gradual cfg) then id else withProgressFI sI) $ runSolverM cfg sI act
     when (solverStats cfg) $ printStats fi wkl stat
     -- print (numIter stat)
+    when (solverTrace cfg) $ writeSolverTrace "fixpoint-trace.json" stat
     return res
   where
     act  = solve_ cfg fi s0 ks  wkl
@@ -89,7 +90,7 @@ solve_ cfg fi s0 ks wkl = do
   let s1   = {-# SCC "sol-init" #-} S.init cfg fi ks
   let s2   = mappend s0 s1 
   -- let s3   = solveEbinds fi s2 
-  s       <- {-# SCC "sol-refine" #-} refine s2 wkl
+  s       <- {-# SCC "sol-refine" #-} refine cfg s2 wkl
   res     <- {-# SCC "sol-result" #-} result cfg wkl s
   st      <- stats
   let res' = {-# SCC "sol-tidy"   #-} tidyResult res
@@ -109,15 +110,17 @@ tidyPred :: F.Expr -> F.Expr
 tidyPred = F.substf (F.eVar . F.tidySymbol)
 
 --------------------------------------------------------------------------------
-refine :: (F.Loc a) => Sol.Solution -> W.Worklist a -> SolveM Sol.Solution
+refine :: (F.Loc a) => Config -> Sol.Solution -> W.Worklist a -> SolveM Sol.Solution
 --------------------------------------------------------------------------------
-refine s w
+refine cfg s w
   | Just (c, w', newScc, rnk) <- W.pop w = do
      i       <- tickIter newScc
      (b, s') <- refineC i s c
      lift $ writeLoud $ refineMsg i c b rnk
      let w'' = if b then W.push c w' else w'
-     refine s' w''
+     when (solverTrace cfg) $
+       solResult cfg s' >>= (takeSolverSnapshot . tidySolution)
+     refine cfg s' w''
   | otherwise = return s
   where
     -- DEBUG

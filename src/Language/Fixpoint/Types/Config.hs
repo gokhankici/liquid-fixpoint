@@ -90,6 +90,7 @@ data Config = Config
   , noIncrPle        :: Bool           -- ^ Use incremental PLE
   , checkCstr        :: [Integer]      -- ^ Only check these specific constraints 
   , extensionality   :: Bool           -- ^ Enable extensional interpretation of function equality 
+  , solverTrace :: Bool -- ^ write the solver trace to a json file
   } deriving (Eq,Data,Typeable,Show,Generic)
 
 instance Default Config where
@@ -177,6 +178,7 @@ defConfig = Config {
   , noIncrPle        = False &= help "Don't use incremental PLE"
   , checkCstr        = []    &= help "Only check these specific constraint-ids" 
   , extensionality   = False &= help "Allow extensional interpretation of extensionality"
+  , solverTrace      = False &= help "Print the solver trace to the fixpoint-trace.json file"
   }
   &= verbosity
   &= program "fixpoint"

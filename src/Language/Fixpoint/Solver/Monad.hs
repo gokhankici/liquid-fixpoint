@@ -25,6 +25,12 @@ module Language.Fixpoint.Solver.Monad
        , tickIter
        , stats
        , numIter
+
+       , TraceVarRun(..)
+       , TraceVar(..)
+       , TraceQualif(..)
+       , takeSolverSnapshot
+       , writeSolverTrace
        )
        where
 
@@ -54,6 +60,13 @@ import           Control.Monad.State.Strict
 import qualified Data.HashMap.Strict as M
 import           Data.Maybe (catMaybes)
 import           Control.Exception.Base (bracket)
+import qualified Data.IntMap as IM
+import qualified Data.HashMap.Strict as HM
+import           Text.Printf
+import           Data.Char
+import qualified Data.Aeson as A
+import qualified Data.Aeson.Encoding.Internal as AI
+import qualified Data.Text as T
 
 --------------------------------------------------------------------------------
 -- | Solver Monadic API --------------------------------------------------------
@@ -61,24 +74,28 @@ import           Control.Exception.Base (bracket)
 
 type SolveM = StateT SolverState IO
 
-data SolverState = SS 
+type SolverTraceElement = M.HashMap F.KVar [TraceQualif]
+type SolverTrace = IM.IntMap SolverTraceElement
+
+data SolverState = SS
   { ssCtx     :: !Context          -- ^ SMT Solver Context
   , ssBinds   :: !F.BindEnv        -- ^ All variables and types
   , ssStats   :: !Stats            -- ^ Solver Statistics
   }
 
-data Stats = Stats 
+data Stats = Stats
   { numCstr :: !Int -- ^ # Horn Constraints
   , numIter :: !Int -- ^ # Refine Iterations
   , numBrkt :: !Int -- ^ # smtBracket    calls (push/pop)
   , numChck :: !Int -- ^ # smtCheckUnsat calls
   , numVald :: !Int -- ^ # times SMT said RHS Valid
+  , ssTrace :: !SolverTrace -- ^ Solver Trace
   } deriving (Show, Generic)
 
 instance NFData Stats
 
 stats0    :: F.GInfo c b -> Stats
-stats0 fi = Stats nCs 0 0 0 0
+stats0 fi = Stats nCs 0 0 0 0 mempty
   where
     nCs   = M.size $ F.cm fi
 
@@ -113,7 +130,7 @@ runSolverM cfg sI act =
 
 
 --------------------------------------------------------------------------------
-getBinds :: SolveM F.BindEnv 
+getBinds :: SolveM F.BindEnv
 --------------------------------------------------------------------------------
 getBinds = ssBinds <$> get
 
@@ -263,3 +280,101 @@ tickIter newScc = progIter newScc >> incIter >> getIter
 
 progIter :: Bool -> SolveM ()
 progIter newScc = lift $ when newScc progressTick
+
+takeSolverSnapshot :: M.HashMap F.KVar F.Expr -> SolveM ()
+takeSolverSnapshot te = do
+  n <- getIter
+  modifyStats $ \s -> s { ssTrace = IM.insert n (go <$> te) (ssTrace s) }
+  where
+    go (F.PAnd es) = toTracePred . F.simplify <$> es
+    go _           = undefined
+
+
+data TraceVarRun = LeftRun | RightRun deriving (Show, Eq, Generic)
+data TraceVar = TraceVar TraceVarRun String Int -- variable name and thread id
+              deriving (Show, Eq, Generic)
+data TraceQualif = TracePublic TraceVar
+                 | TraceUntainted TraceVar
+                 | TraceSameTaint TraceVar TraceVar
+                 deriving (Show, Eq, Generic)
+
+instance NFData TraceVarRun
+instance NFData TraceVar
+instance NFData TraceQualif
+
+instance A.ToJSON TraceVarRun
+instance A.ToJSON TraceVar
+instance A.ToJSON TraceQualif
+
+instance A.ToJSON F.KVar where
+  toJSON = A.String . T.pack . F.symbolSafeString . F.kv
+
+instance A.ToJSONKey F.KVar where
+  toJSONKey =
+    A.ToJSONKeyText (T.pack . toS) (AI.string . toS)
+      where toS = F.symbolSafeString . F.kv
+
+toTracePred :: F.Expr -> TraceQualif
+toTracePred e@(F.PAtom F.Eq (F.EVar s1) (F.EVar s2))
+  | isTaint s1 || isTaint s2 = error $ toTracePredErrorMsg e
+  | otherwise =
+    let TraceVar r1 v1 n1 = parseTraceVar s1
+        TraceVar r2 v2 n2 = parseTraceVar s2
+     in if r1 /= r2 && v1 == v2 && n1 == n2
+        then TracePublic (TraceVar LeftRun v1 n1)
+        else error $ toTracePredErrorMsg e
+
+toTracePred e@(F.PIff (F.EVar s1) e2) =
+  case e2 of
+    F.POr [] ->
+      TraceUntainted $ parseTraceVar s1
+    F.EVar s2 | isTaint s1 && isTaint s2 ->
+      TraceSameTaint (parseTraceVar s1) (parseTraceVar s2)
+    _ -> error $ toTracePredErrorMsg e
+
+toTracePred e = error $ toTracePredErrorMsg e
+
+toTracePredErrorMsg :: F.Expr -> String
+toTracePredErrorMsg e =
+  printf "Unexpected expr in toTracePred: %s" (F.showFix $ F.simplify e)
+
+isTaint :: F.Symbol -> Bool
+isTaint sym =
+  case str of
+    'T':_ -> True
+    'V':_ -> False
+    _     -> error $ printf "Unexpected symbol in isTaint: %s" str
+  where
+    str = F.symbolSafeString sym
+
+
+parseTraceVar :: F.Symbol -> TraceVar
+parseTraceVar sym =
+  TraceVar
+  (getVarRun s)
+  (reverse $ drop 2 rest)
+  (read $ reverse tRev)
+  where
+    s = F.symbolSafeString sym
+    s1 = drop 3 s -- drop the type & run characters
+    s1r = reverse s1 -- reverse it to parse the thread id
+    (tRev, rest) = span isDigit s1r
+
+    getVarRun (_:'L':'_':_) = LeftRun
+    getVarRun (_:'R':'_':_) = RightRun
+    getVarRun s = error $ printf "Unexpected symbol in getVarRun: %s" s
+
+writeSolverTrace :: FilePath -> Stats -> IO ()
+writeSolverTrace fp stat = do
+  A.encodeFile fp (ssTrace stat)
+  printSolverTrace stat
+
+printSolverTrace :: Stats -> IO ()
+printSolverTrace stat = do
+  flip mapM_ (IM.toList $ ssTrace stat) $ \(n, te) -> do
+    printf "%d:\n" n
+    flip mapM_ (HM.toList te) $ \(kv, ps) -> do
+      case ps of
+        [] -> return ()
+        es -> print kv >> mapM_ print es
+    printf "\n\n\n"
