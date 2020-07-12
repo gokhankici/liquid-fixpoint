@@ -67,6 +67,9 @@ import           Data.Char
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Encoding.Internal as AI
 import qualified Data.Text as T
+import           Data.Hashable
+import qualified Data.HashSet as HS
+import           Language.Fixpoint.Misc
 
 --------------------------------------------------------------------------------
 -- | Solver Monadic API --------------------------------------------------------
@@ -74,7 +77,7 @@ import qualified Data.Text as T
 
 type SolveM = StateT SolverState IO
 
-type SolverTraceElement = M.HashMap F.KVar [TraceQualif]
+type SolverTraceElement = M.HashMap F.KVar Qs
 type SolverTrace = IM.IntMap SolverTraceElement
 
 data SolverState = SS
@@ -286,17 +289,35 @@ takeSolverSnapshot te = do
   n <- getIter
   modifyStats $ \s -> s { ssTrace = IM.insert n (go <$> te) (ssTrace s) }
   where
-    go (F.PAnd es) = toTracePred . F.simplify <$> es
+    go (F.PAnd es) = HS.fromList $ toTracePred . F.simplify <$> es
     go _           = undefined
 
+type Qs = HS.HashSet TraceQualif
 
-data TraceVarRun = LeftRun | RightRun deriving (Show, Eq, Generic)
+data TraceVarRun = LeftRun | RightRun
+                 deriving (Eq, Generic)
 data TraceVar = TraceVar TraceVarRun String Int -- variable name and thread id
-              deriving (Show, Eq, Generic)
+              deriving (Eq, Generic)
 data TraceQualif = TracePublic TraceVar
                  | TraceUntainted TraceVar
+                 | TraceConstantTime TraceVar
                  | TraceSameTaint TraceVar TraceVar
-                 deriving (Show, Eq, Generic)
+                 | TraceSummary Qs Qs
+                 deriving (Eq, Generic)
+
+instance Show TraceVarRun where
+  show LeftRun  = "L"
+  show RightRun = "R"
+
+instance Show TraceVar where
+  show (TraceVar r s n) = printf "%s/%s/%s" (show r) s (show n)
+
+instance Show TraceQualif where
+  show (TracePublic v)        = printf "public(%s)" (show v)
+  show (TraceConstantTime v)  = printf "ct(%s)" (show v)
+  show (TraceUntainted v)     = printf "untainted(%s)" (show v)
+  show (TraceSameTaint v1 v2) = printf "sameTaint(%s, %s)" (show v1) (show v2)
+  show (TraceSummary q1 q2)   = printf "%s => %s" (show q1) (show q2)
 
 instance NFData TraceVarRun
 instance NFData TraceVar
@@ -305,6 +326,14 @@ instance NFData TraceQualif
 instance A.ToJSON TraceVarRun
 instance A.ToJSON TraceVar
 instance A.ToJSON TraceQualif
+
+instance A.FromJSON TraceVarRun
+instance A.FromJSON TraceVar
+instance A.FromJSON TraceQualif
+
+instance Hashable TraceVarRun
+instance Hashable TraceVar
+instance Hashable TraceQualif
 
 instance A.ToJSON F.KVar where
   toJSON = A.String . T.pack . F.symbolSafeString . F.kv
@@ -329,14 +358,23 @@ toTracePred e@(F.PIff (F.EVar s1) e2) =
     F.POr [] ->
       TraceUntainted $ parseTraceVar s1
     F.EVar s2 | isTaint s1 && isTaint s2 ->
-      TraceSameTaint (parseTraceVar s1) (parseTraceVar s2)
+      let tv1@(TraceVar r1 v1 n1) = parseTraceVar s1
+          tv2@(TraceVar r2 v2 n2) = parseTraceVar s2
+       in if r1 /= r2 && v1 == v2 && n1 == n2
+          then TraceConstantTime (TraceVar LeftRun v1 n1)
+          else TraceSameTaint tv1 tv2
     _ -> error $ toTracePredErrorMsg e
+
+toTracePred (F.PImp (F.PAnd es1) e2) =
+  TraceSummary
+  (HS.fromList $ toTracePred <$> es1)
+  (HS.singleton $ toTracePred e2)
 
 toTracePred e = error $ toTracePredErrorMsg e
 
 toTracePredErrorMsg :: F.Expr -> String
 toTracePredErrorMsg e =
-  printf "Unexpected expr in toTracePred: %s" (F.showFix $ F.simplify e)
+  printf "Unexpected expr in toTracePred: %s" (show $ F.simplify e)
 
 isTaint :: F.Symbol -> Bool
 isTaint sym =
@@ -369,12 +407,32 @@ writeSolverTrace fp stat = do
   A.encodeFile fp (ssTrace stat)
   printSolverTrace stat
 
+printRed :: String -> IO ()
+printRed = colorStrLn Angry
+
 printSolverTrace :: Stats -> IO ()
 printSolverTrace stat = do
-  flip mapM_ (IM.toList $ ssTrace stat) $ \(n, te) -> do
-    printf "%d:\n" n
-    flip mapM_ (HM.toList te) $ \(kv, ps) -> do
-      case ps of
-        [] -> return ()
-        es -> print kv >> mapM_ print es
-    printf "\n\n\n"
+  let forM_ = flip mapM_
+      tes = fmap (HS.filter printFilter) <$> (IM.elems $ ssTrace stat)
+      printTE te = forM_ (HM.toList te) $ \(kv, qs) ->
+                     unless (null qs) $ do
+                       print kv
+                       forM_ (HS.toList qs) (printQ (const True))
+      printFilter q = 
+        case q of
+          TraceUntainted _   -> False
+          TraceSameTaint _ _ -> False
+          TraceSummary _ _   -> False
+          _ -> True
+      printQ f q = if f q then print q else printRed $ show q
+      sep = putStrLn $ replicate 80 '-'
+  sep
+  forM_ (zip tes (tail tes)) $ \(te1, te2) -> unless (te1 == te2) $ do
+    forM_ (HM.toList te1) $ \(kvar, qs1) -> do
+      unless (null qs1) $ print kvar
+      case HM.lookup kvar te2 of
+        Just qs2 -> forM_ (HS.toList qs1) $ printQ (`elem` qs2) 
+        Nothing -> mapM_ (printQ (const False)) qs1
+    sep
+  unless (null tes) $ printTE (last tes)
+  sep
