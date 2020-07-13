@@ -1,0 +1,19 @@
+cradle:
+  cabal:
+    - path: "src"
+      component: "lib:liquid-fixpoint"
+
+    - path: "unix"
+      component: "lib:liquid-fixpoint"
+
+    - path: "win"
+      component: "lib:liquid-fixpoint"
+
+    - path: "bin/Fixpoint.hs"
+      component: "liquid-fixpoint:exe:fixpoint"
+
+    - path: "tests"
+      component: "liquid-fixpoint:test:test"
+
+    - path: "tests"
+      component: "liquid-fixpoint:test:testparser"

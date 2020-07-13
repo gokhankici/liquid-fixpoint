@@ -30,6 +30,7 @@ module Language.Fixpoint.Solver.Monad
        , TraceVar(..)
        , TraceQualif(..)
        , takeSolverSnapshot
+       , readSolverTrace
        , writeSolverTrace
        )
        where
@@ -58,18 +59,18 @@ import           Data.List            (partition)
 import           Text.PrettyPrint.HughesPJ (text)
 import           Control.Monad.State.Strict
 import qualified Data.HashMap.Strict as M
-import           Data.Maybe (catMaybes)
+import           Data.Maybe (catMaybes, fromJust)
 import           Control.Exception.Base (bracket)
 import qualified Data.IntMap as IM
 import qualified Data.HashMap.Strict as HM
 import           Text.Printf
 import           Data.Char
 import qualified Data.Aeson as A
-import qualified Data.Aeson.Encoding.Internal as AI
 import qualified Data.Text as T
 import           Data.Hashable
 import qualified Data.HashSet as HS
 import           Language.Fixpoint.Misc
+import           Data.Bifunctor
 
 --------------------------------------------------------------------------------
 -- | Solver Monadic API --------------------------------------------------------
@@ -77,7 +78,7 @@ import           Language.Fixpoint.Misc
 
 type SolveM = StateT SolverState IO
 
-type SolverTraceElement = M.HashMap F.KVar Qs
+type SolverTraceElement = M.HashMap T.Text Qs
 type SolverTrace = IM.IntMap SolverTraceElement
 
 data SolverState = SS
@@ -287,8 +288,10 @@ progIter newScc = lift $ when newScc progressTick
 takeSolverSnapshot :: M.HashMap F.KVar F.Expr -> SolveM ()
 takeSolverSnapshot te = do
   n <- getIter
-  modifyStats $ \s -> s { ssTrace = IM.insert n (go <$> te) (ssTrace s) }
+  modifyStats $ \s -> s { ssTrace = IM.insert n (go <$> te') (ssTrace s) }
   where
+    toKey = T.pack . F.symbolSafeString . F.kv
+    te'            = HM.fromList $ first toKey <$> HM.toList te
     go (F.PAnd es) = HS.fromList $ toTracePred . F.simplify <$> es
     go _           = undefined
 
@@ -334,14 +337,6 @@ instance A.FromJSON TraceQualif
 instance Hashable TraceVarRun
 instance Hashable TraceVar
 instance Hashable TraceQualif
-
-instance A.ToJSON F.KVar where
-  toJSON = A.String . T.pack . F.symbolSafeString . F.kv
-
-instance A.ToJSONKey F.KVar where
-  toJSONKey =
-    A.ToJSONKeyText (T.pack . toS) (AI.string . toS)
-      where toS = F.symbolSafeString . F.kv
 
 toTracePred :: F.Expr -> TraceQualif
 toTracePred e@(F.PAtom F.Eq (F.EVar s1) (F.EVar s2))
@@ -407,6 +402,9 @@ writeSolverTrace fp stat = do
   A.encodeFile fp (ssTrace stat)
   printSolverTrace stat
 
+readSolverTrace :: FilePath -> IO SolverTrace
+readSolverTrace fp = fromJust <$> A.decodeFileStrict fp
+
 printRed :: String -> IO ()
 printRed = colorStrLn Angry
 
@@ -418,7 +416,7 @@ printSolverTrace stat = do
                      unless (null qs) $ do
                        print kv
                        forM_ (HS.toList qs) (printQ (const True))
-      printFilter q = 
+      printFilter q =
         case q of
           TraceUntainted _   -> False
           TraceSameTaint _ _ -> False
@@ -431,7 +429,7 @@ printSolverTrace stat = do
     forM_ (HM.toList te1) $ \(kvar, qs1) -> do
       unless (null qs1) $ print kvar
       case HM.lookup kvar te2 of
-        Just qs2 -> forM_ (HS.toList qs1) $ printQ (`elem` qs2) 
+        Just qs2 -> forM_ (HS.toList qs1) $ printQ (`elem` qs2)
         Nothing -> mapM_ (printQ (const False)) qs1
     sep
   unless (null tes) $ printTE (last tes)
