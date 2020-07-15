@@ -29,6 +29,8 @@ module Language.Fixpoint.Solver.Monad
        , TraceVarRun(..)
        , TraceVar(..)
        , TraceQualif(..)
+       , SolverTrace
+       , SolverTraceElement
        , takeSolverSnapshot
        , readSolverTrace
        , writeSolverTrace
@@ -77,9 +79,6 @@ import           Data.Bifunctor
 --------------------------------------------------------------------------------
 
 type SolveM = StateT SolverState IO
-
-type SolverTraceElement = M.HashMap T.Text Qs
-type SolverTrace = IM.IntMap SolverTraceElement
 
 data SolverState = SS
   { ssCtx     :: !Context          -- ^ SMT Solver Context
@@ -284,6 +283,9 @@ tickIter newScc = progIter newScc >> incIter >> getIter
 
 progIter :: Bool -> SolveM ()
 progIter newScc = lift $ when newScc progressTick
+
+type SolverTraceElement = M.HashMap T.Text Qs
+type SolverTrace = IM.IntMap SolverTraceElement
 
 takeSolverSnapshot :: M.HashMap F.KVar F.Expr -> SolveM ()
 takeSolverSnapshot te = do
