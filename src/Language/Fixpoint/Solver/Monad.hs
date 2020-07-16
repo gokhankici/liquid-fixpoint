@@ -34,6 +34,8 @@ module Language.Fixpoint.Solver.Monad
        , takeSolverSnapshot
        , readSolverTrace
        , writeSolverTrace
+       , printSolverTrace
+       , toTraceSummary
        )
        where
 
@@ -300,29 +302,29 @@ takeSolverSnapshot te = do
 type Qs = HS.HashSet TraceQualif
 
 data TraceVarRun = LeftRun | RightRun
-                 deriving (Eq, Generic)
+                 deriving (Eq, Generic, Show, Read)
 data TraceVar = TraceVar TraceVarRun String Int -- variable name and thread id
-              deriving (Eq, Generic)
+              deriving (Eq, Generic, Show, Read)
 data TraceQualif = TracePublic TraceVar
                  | TraceUntainted TraceVar
                  | TraceConstantTime TraceVar
                  | TraceSameTaint TraceVar TraceVar
                  | TraceSummary Qs Qs
-                 deriving (Eq, Generic)
+                 deriving (Eq, Generic, Show, Read)
 
-instance Show TraceVarRun where
-  show LeftRun  = "L"
-  show RightRun = "R"
+-- instance Show TraceVarRun where
+--   show LeftRun  = "L"
+--   show RightRun = "R"
 
-instance Show TraceVar where
-  show (TraceVar r s n) = printf "%s/%s/%s" (show r) s (show n)
+-- instance Show TraceVar where
+--   show (TraceVar r s n) = printf "%s/%s/%s" (show r) s (show n)
 
-instance Show TraceQualif where
-  show (TracePublic v)        = printf "public(%s)" (show v)
-  show (TraceConstantTime v)  = printf "ct(%s)" (show v)
-  show (TraceUntainted v)     = printf "untainted(%s)" (show v)
-  show (TraceSameTaint v1 v2) = printf "sameTaint(%s, %s)" (show v1) (show v2)
-  show (TraceSummary q1 q2)   = printf "%s => %s" (show q1) (show q2)
+-- instance Show TraceQualif where
+--   show (TracePublic v)        = printf "public(%s)" (show v)
+--   show (TraceConstantTime v)  = printf "ct(%s)" (show v)
+--   show (TraceUntainted v)     = printf "untainted(%s)" (show v)
+--   show (TraceSameTaint v1 v2) = printf "sameTaint(%s, %s)" (show v1) (show v2)
+--   show (TraceSummary q1 q2)   = printf "%s => %s" (show $ HS.toList q1) (show $ HS.toList q2)
 
 instance NFData TraceVarRun
 instance NFData TraceVar
@@ -362,12 +364,16 @@ toTracePred e@(F.PIff (F.EVar s1) e2) =
           else TraceSameTaint tv1 tv2
     _ -> error $ toTracePredErrorMsg e
 
-toTracePred (F.PImp (F.PAnd es1) e2) =
+toTracePred e@(F.PImp (F.PAnd _) _) = fromJust $ toTraceSummary e
+
+toTracePred e = error $ toTracePredErrorMsg e
+
+toTraceSummary :: F.Expr -> Maybe TraceQualif
+toTraceSummary (F.PImp (F.PAnd es1) e2) = Just $
   TraceSummary
   (HS.fromList $ toTracePred <$> es1)
   (HS.singleton $ toTracePred e2)
-
-toTracePred e = error $ toTracePredErrorMsg e
+toTraceSummary _ = Nothing
 
 toTracePredErrorMsg :: F.Expr -> String
 toTracePredErrorMsg e =
@@ -400,9 +406,9 @@ parseTraceVar sym =
     getVarRun s = error $ printf "Unexpected symbol in getVarRun: %s" s
 
 writeSolverTrace :: FilePath -> Stats -> IO ()
-writeSolverTrace fp stat = do
+writeSolverTrace fp stat =
   A.encodeFile fp (ssTrace stat)
-  printSolverTrace stat
+  -- printSolverTrace stat
 
 readSolverTrace :: FilePath -> IO SolverTrace
 readSolverTrace fp = fromJust <$> A.decodeFileStrict fp
