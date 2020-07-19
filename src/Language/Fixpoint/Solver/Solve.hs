@@ -30,7 +30,7 @@ import           System.Console.CmdArgs.Verbosity -- (whenNormal, whenLoud)
 import           Control.DeepSeq
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet        as S
--- import qualified Data.Maybe          as Mb 
+-- import qualified Data.Maybe          as Mb
 import qualified Data.List           as L
 
 --------------------------------------------------------------------------------
@@ -40,6 +40,7 @@ solve :: (NFData a, F.Fixpoint a, Show a, F.Loc a) => Config -> F.SInfo a -> IO 
 solve cfg fi = do
     whenLoud $ donePhase Misc.Loud "Worklist Initialize"
     vb <- getVerbosity
+    -- let vb = Quiet
     (res, stat) <- (if (Quiet == vb || gradual cfg) then id else withProgressFI sI) $ runSolverM cfg sI act
     when (solverStats cfg) $ printStats fi wkl stat
     -- print (numIter stat)
@@ -57,7 +58,7 @@ solve cfg fi = do
 -- | Progress Bar
 --------------------------------------------------------------------------------
 withProgressFI :: SolverInfo a b -> IO b -> IO b
-withProgressFI = withProgress . (+ 1) . fromIntegral . cNumScc . siDeps  
+withProgressFI = withProgress . (+ 1) . fromIntegral . cNumScc . siDeps
 --------------------------------------------------------------------------------
 
 printStats :: F.SInfo a ->  W.Worklist a -> Stats -> IO ()
@@ -88,8 +89,8 @@ solve_ :: (NFData a, F.Fixpoint a, F.Loc a)
 --------------------------------------------------------------------------------
 solve_ cfg fi s0 ks wkl = do
   let s1   = {-# SCC "sol-init" #-} S.init cfg fi ks
-  let s2   = mappend s0 s1 
-  -- let s3   = solveEbinds fi s2 
+  let s2   = mappend s0 s1
+  -- let s3   = solveEbinds fi s2
   s       <- {-# SCC "sol-refine" #-} refine cfg s2 wkl
   res     <- {-# SCC "sol-result" #-} result cfg wkl s
   st      <- stats
@@ -110,7 +111,7 @@ tidyPred :: F.Expr -> F.Expr
 tidyPred = F.substf (F.eVar . F.tidySymbol)
 
 --------------------------------------------------------------------------------
-refine :: (F.Loc a) => Config -> Sol.Solution -> W.Worklist a -> SolveM Sol.Solution
+refine :: (F.Loc a, F.Fixpoint a) => Config -> Sol.Solution -> W.Worklist a -> SolveM Sol.Solution
 --------------------------------------------------------------------------------
 refine cfg s w
   | Just (c, w', newScc, rnk) <- W.pop w = do
@@ -119,7 +120,7 @@ refine cfg s w
      lift $ writeLoud $ refineMsg i c b rnk
      let w'' = if b then W.push c w' else w'
      when (solverTrace cfg) $
-       solResult cfg s' >>= (takeSolverSnapshot . tidySolution)
+       solResult cfg s' >>= (takeSolverSnapshot (F.subcId c) . tidySolution)
      refine cfg s' w''
   | otherwise = return s
   where
@@ -185,9 +186,9 @@ result_  cfg w s = res <$> filterM (isUnsat s) cs
     res cs'      = F.Unsafe cs'
 
 isChecked :: Config -> [F.SimpC a] -> [F.SimpC a]
-isChecked cfg cs = case checkCstr cfg of 
-  []   -> cs 
-  ids  -> let s = S.fromList ids in 
+isChecked cfg cs = case checkCstr cfg of
+  []   -> cs
+  ids  -> let s = S.fromList ids in
           [c | c <- cs, S.member (F.subcId c) s ]
 
 --------------------------------------------------------------------------------

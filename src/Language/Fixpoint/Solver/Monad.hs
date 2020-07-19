@@ -34,7 +34,6 @@ module Language.Fixpoint.Solver.Monad
        , takeSolverSnapshot
        , readSolverTrace
        , writeSolverTrace
-       , printSolverTrace
        , toTraceSummary
        )
        where
@@ -73,7 +72,6 @@ import qualified Data.Aeson as A
 import qualified Data.Text as T
 import           Data.Hashable
 import qualified Data.HashSet as HS
-import           Language.Fixpoint.Misc
 import           Data.Bifunctor
 
 --------------------------------------------------------------------------------
@@ -287,12 +285,12 @@ progIter :: Bool -> SolveM ()
 progIter newScc = lift $ when newScc progressTick
 
 type SolverTraceElement = M.HashMap T.Text Qs
-type SolverTrace = IM.IntMap SolverTraceElement
+type SolverTrace = IM.IntMap (Int, SolverTraceElement)
 
-takeSolverSnapshot :: M.HashMap F.KVar F.Expr -> SolveM ()
-takeSolverSnapshot te = do
+takeSolverSnapshot :: Integer -> M.HashMap F.KVar F.Expr -> SolveM ()
+takeSolverSnapshot consId te = do
   n <- getIter
-  modifyStats $ \s -> s { ssTrace = IM.insert n (go <$> te') (ssTrace s) }
+  modifyStats $ \s -> s { ssTrace = IM.insert n (fromIntegral consId, go <$> te') (ssTrace s) }
   where
     toKey = T.pack . F.symbolSafeString . F.kv
     te'            = HM.fromList $ first toKey <$> HM.toList te
@@ -302,29 +300,15 @@ takeSolverSnapshot te = do
 type Qs = HS.HashSet TraceQualif
 
 data TraceVarRun = LeftRun | RightRun
-                 deriving (Eq, Generic, Show, Read)
+                 deriving (Eq, Generic, Show, Read, Ord)
 data TraceVar = TraceVar TraceVarRun String Int -- variable name and thread id
-              deriving (Eq, Generic, Show, Read)
+              deriving (Eq, Generic, Show, Read, Ord)
 data TraceQualif = TracePublic TraceVar
                  | TraceUntainted TraceVar
                  | TraceConstantTime TraceVar
                  | TraceSameTaint TraceVar TraceVar
                  | TraceSummary Qs Qs
-                 deriving (Eq, Generic, Show, Read)
-
--- instance Show TraceVarRun where
---   show LeftRun  = "L"
---   show RightRun = "R"
-
--- instance Show TraceVar where
---   show (TraceVar r s n) = printf "%s/%s/%s" (show r) s (show n)
-
--- instance Show TraceQualif where
---   show (TracePublic v)        = printf "public(%s)" (show v)
---   show (TraceConstantTime v)  = printf "ct(%s)" (show v)
---   show (TraceUntainted v)     = printf "untainted(%s)" (show v)
---   show (TraceSameTaint v1 v2) = printf "sameTaint(%s, %s)" (show v1) (show v2)
---   show (TraceSummary q1 q2)   = printf "%s => %s" (show $ HS.toList q1) (show $ HS.toList q2)
+                 deriving (Eq, Generic, Show, Read, Ord)
 
 instance NFData TraceVarRun
 instance NFData TraceVar
@@ -406,39 +390,7 @@ parseTraceVar sym =
     getVarRun s = error $ printf "Unexpected symbol in getVarRun: %s" s
 
 writeSolverTrace :: FilePath -> Stats -> IO ()
-writeSolverTrace fp stat =
-  A.encodeFile fp (ssTrace stat)
-  -- printSolverTrace stat
+writeSolverTrace fp stat = A.encodeFile fp (ssTrace stat)
 
 readSolverTrace :: FilePath -> IO SolverTrace
 readSolverTrace fp = fromJust <$> A.decodeFileStrict fp
-
-printRed :: String -> IO ()
-printRed = colorStrLn Angry
-
-printSolverTrace :: Stats -> IO ()
-printSolverTrace stat = do
-  let forM_ = flip mapM_
-      tes = fmap (HS.filter printFilter) <$> (IM.elems $ ssTrace stat)
-      printTE te = forM_ (HM.toList te) $ \(kv, qs) ->
-                     unless (null qs) $ do
-                       print kv
-                       forM_ (HS.toList qs) (printQ (const True))
-      printFilter q =
-        case q of
-          TraceUntainted _   -> False
-          TraceSameTaint _ _ -> False
-          TraceSummary _ _   -> False
-          _ -> True
-      printQ f q = if f q then print q else printRed $ show q
-      sep = putStrLn $ replicate 80 '-'
-  sep
-  forM_ (zip tes (tail tes)) $ \(te1, te2) -> unless (te1 == te2) $ do
-    forM_ (HM.toList te1) $ \(kvar, qs1) -> do
-      unless (null qs1) $ print kvar
-      case HM.lookup kvar te2 of
-        Just qs2 -> forM_ (HS.toList qs1) $ printQ (`elem` qs2)
-        Nothing -> mapM_ (printQ (const False)) qs1
-    sep
-  unless (null tes) $ printTE (last tes)
-  sep
