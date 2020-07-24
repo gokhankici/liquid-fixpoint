@@ -294,8 +294,9 @@ takeSolverSnapshot consId te = do
   where
     toKey = T.pack . F.symbolSafeString . F.kv
     te'            = HM.fromList $ first toKey <$> HM.toList te
-    go (F.PAnd es) = HS.fromList $ toTracePred . F.simplify <$> es
-    go _           = undefined
+    gos            = HS.fromList . fmap (toTracePred . F.simplify)
+    go (F.PAnd es) = gos es
+    go e           = gos [e]
 
 type Qs = HS.HashSet TraceQualif
 
