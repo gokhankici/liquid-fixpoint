@@ -294,9 +294,20 @@ takeSolverSnapshot consId te = do
   where
     toKey = T.pack . F.symbolSafeString . F.kv
     te'            = HM.fromList $ first toKey <$> HM.toList te
-    gos            = HS.fromList . fmap (toTracePred . F.simplify)
+    gos            = HS.fromList . concat . fmap (toTracePred . F.simplify)
     go (F.PAnd es) = gos es
     go e           = gos [e]
+
+-- simplify :: F.Expr -> F.Expr
+-- simplify = go . F.simplify
+--   where
+--     go (F.PAnd [e])   = go e
+--     go (F.PAnd es)    = F.PAnd (go <$> es)
+--     go (F.POr [e])    = go e
+--     go (F.POr es)     = F.POr (go <$> es)
+--     go (F.PIff e1 e2) = F.PIff (go e1) (go e2)
+--     go (F.PImp e1 e2) = F.PImp (go e1) (go e2)
+--     go e              = e
 
 type Qs = HS.HashSet TraceQualif
 
@@ -327,10 +338,11 @@ instance Hashable TraceVarRun
 instance Hashable TraceVar
 instance Hashable TraceQualif
 
-toTracePred :: F.Expr -> TraceQualif
+toTracePred :: F.Expr -> [TraceQualif]
 toTracePred e@(F.PAtom F.Eq (F.EVar s1) (F.EVar s2))
   | isTaint s1 || isTaint s2 = error $ toTracePredErrorMsg e
   | otherwise =
+    return $
     let TraceVar r1 v1 n1 = parseTraceVar s1
         TraceVar r2 v2 n2 = parseTraceVar s2
      in if r1 /= r2 && v1 == v2 && n1 == n2
@@ -340,8 +352,10 @@ toTracePred e@(F.PAtom F.Eq (F.EVar s1) (F.EVar s2))
 toTracePred e@(F.PIff (F.EVar s1) e2) =
   case e2 of
     F.POr [] ->
+      return $
       TraceUntainted $ parseTraceVar s1
     F.EVar s2 | isTaint s1 && isTaint s2 ->
+      return $
       let tv1@(TraceVar r1 v1 n1) = parseTraceVar s1
           tv2@(TraceVar r2 v2 n2) = parseTraceVar s2
        in if r1 /= r2 && v1 == v2 && n1 == n2
@@ -349,15 +363,17 @@ toTracePred e@(F.PIff (F.EVar s1) e2) =
           else TraceSameTaint tv1 tv2
     _ -> error $ toTracePredErrorMsg e
 
-toTracePred e@(F.PImp (F.PAnd _) _) = fromJust $ toTraceSummary e
+toTracePred e@(F.PImp _ _) = return $ fromJust $ toTraceSummary e
+
+toTracePred (F.PAnd es) = es >>= toTracePred
 
 toTracePred e = error $ toTracePredErrorMsg e
 
 toTraceSummary :: F.Expr -> Maybe TraceQualif
 toTraceSummary (F.PImp (F.PAnd es1) e2) = Just $
   TraceSummary
-  (HS.fromList $ toTracePred <$> es1)
-  (HS.singleton $ toTracePred e2)
+  (HS.fromList $ concat $ toTracePred <$> es1)
+  (HS.fromList $ toTracePred e2)
 toTraceSummary _ = Nothing
 
 toTracePredErrorMsg :: F.Expr -> String
