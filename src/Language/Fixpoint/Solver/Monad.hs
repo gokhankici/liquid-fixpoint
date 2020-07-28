@@ -74,6 +74,11 @@ import           Data.Hashable
 import qualified Data.HashSet as HS
 import           Data.Bifunctor
 
+import qualified Debug.Trace as DT
+
+trc :: String -> a -> a
+trc msg a = let enableTrace = False in if enableTrace then DT.trace msg a else a
+
 --------------------------------------------------------------------------------
 -- | Solver Monadic API --------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -294,20 +299,20 @@ takeSolverSnapshot consId te = do
   where
     toKey = T.pack . F.symbolSafeString . F.kv
     te'            = HM.fromList $ first toKey <$> HM.toList te
-    gos            = HS.fromList . concat . fmap (toTracePred . F.simplify)
+    gos            = HS.fromList . concat . fmap (toTracePred . simplify)
     go (F.PAnd es) = gos es
     go e           = gos [e]
 
--- simplify :: F.Expr -> F.Expr
--- simplify = go . F.simplify
---   where
---     go (F.PAnd [e])   = go e
---     go (F.PAnd es)    = F.PAnd (go <$> es)
---     go (F.POr [e])    = go e
---     go (F.POr es)     = F.POr (go <$> es)
---     go (F.PIff e1 e2) = F.PIff (go e1) (go e2)
---     go (F.PImp e1 e2) = F.PImp (go e1) (go e2)
---     go e              = e
+simplify :: F.Expr -> F.Expr
+simplify = go . F.simplify
+  where
+    go (F.PAnd [e])   = go e
+    go (F.PAnd es)    = F.PAnd (go <$> es)
+    go (F.POr [e])    = go e
+    go (F.POr es)     = F.POr (go <$> es)
+    go (F.PIff e1 e2) = F.PIff (go e1) (go e2)
+    go (F.PImp e1 e2) = F.PImp (go e1) (go e2)
+    go e              = e
 
 type Qs = HS.HashSet TraceQualif
 
@@ -361,24 +366,32 @@ toTracePred e@(F.PIff (F.EVar s1) e2) =
        in if r1 /= r2 && v1 == v2 && n1 == n2
           then TraceConstantTime (TraceVar LeftRun v1 n1)
           else TraceSameTaint tv1 tv2
-    _ -> error $ toTracePredErrorMsg e
+    _ -> trc (toTracePredErrorMsg e) []
 
-toTracePred e@(F.PImp _ _) = return $ fromJust $ toTraceSummary e
+toTracePred e@(F.PImp _ _) =
+  case toTraceSummary e of
+    Nothing -> trc (toTracePredErrorMsg e) []
+    Just ts -> [ts]
 
 toTracePred (F.PAnd es) = es >>= toTracePred
 
-toTracePred e = error $ toTracePredErrorMsg e
+toTracePred e = trc (toTracePredErrorMsg e) []
 
 toTraceSummary :: F.Expr -> Maybe TraceQualif
-toTraceSummary (F.PImp (F.PAnd es1) e2) = Just $
-  TraceSummary
-  (HS.fromList $ concat $ toTracePred <$> es1)
-  (HS.fromList $ toTracePred e2)
+toTraceSummary (F.PImp e1 e2) =
+  if null tp1 || null tp2
+  then Nothing
+  else Just $ TraceSummary tp1 tp2
+  where
+    tp2 = HS.fromList $ toTracePred e2
+    tp1 = case e1 of
+            F.PAnd es1 -> HS.fromList $ concat $ toTracePred <$> es1
+            _          -> HS.fromList $ toTracePred e1
 toTraceSummary _ = Nothing
 
 toTracePredErrorMsg :: F.Expr -> String
 toTracePredErrorMsg e =
-  printf "Unexpected expr in toTracePred: %s" (show $ F.simplify e)
+  printf "Unexpected expr in toTracePred:\n%s" (F.showFix e)
 
 isTaint :: F.Symbol -> Bool
 isTaint sym =
