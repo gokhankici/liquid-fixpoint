@@ -35,6 +35,7 @@ module Language.Fixpoint.Solver.Monad
        , readSolverTrace
        , writeSolverTrace
        , toTraceSummary
+       , toTracePred
        )
        where
 
